@@ -1,0 +1,29 @@
+# Node dependencies (installed inside image)
+node_modules
+npm-debug.log
+yarn.lock
+
+# Git & CI
+.git
+.gitignore
+.github
+
+# Docker
+Dockerfile
+.dockerignore
+
+# OS / Editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode
+.idea
+
+# Logs
+logs
+*.log
+
+# Env files (never bake secrets)
+.env
+.env.*
