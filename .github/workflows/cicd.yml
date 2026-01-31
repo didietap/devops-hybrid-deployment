@@ -1,0 +1,41 @@
+name: CI/CD - Minikube
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to GHCR
+      run: |
+        echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+          -u ${{ github.actor }} --password-stdin
+
+    - name: Build Docker image
+      run: |
+        docker build \
+          -t $REGISTRY/$IMAGE_NAME:latest \
+          -f app/Dockerfile app/
+
+    - name: Push Docker image
+      run: |
+        docker push $REGISTRY/$IMAGE_NAME:latest
+
+    - name: Set Kubernetes context (Minikube)
+      run: |
+        kubectl config use-context minikube
+
+    - name: Deploy to Minikube
+      run: |
+        kubectl apply -f k8s/
+        kubectl rollout status deployment/hybrid-app
