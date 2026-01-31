@@ -1,0 +1,12 @@
+{
+  "name": "hybrid-app",
+  "version": "1.0.0",
+  "description": "Node.js app for PM2 and Kubernetes deployment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
