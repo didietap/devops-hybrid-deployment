@@ -1,41 +1,88 @@
-name: CI/CD - Minikube
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  build-and-deploy:
+  # =================================================
+  # CI STAGE – Build & Push Docker Image
+  # =================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
+
+    - name: Build multi-stage Docker image
+      run: |
+        docker build \
+          -f app/Dockerfile app/ \
+          -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
+          -t $REGISTRY/$IMAGE_NAME:latest
+
+    - name: Push Docker image to GHCR
+      run: |
+        docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        docker push $REGISTRY/$IMAGE_NAME:latest
+
+  # =================================================
+  # CD STAGE – Deploy to Kubernetes
+  # =================================================
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build
     runs-on: self-hosted
 
     steps:
-    - name: Checkout code
+    - name: Checkout source code
       uses: actions/checkout@v4
 
-    - name: Log in to GHCR
+    - name: Verify Kubernetes context
       run: |
-        echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-          -u ${{ github.actor }} --password-stdin
+        kubectl config current-context
 
-    - name: Build Docker image
-      run: |
-        docker build \
-          -t $REGISTRY/$IMAGE_NAME:latest \
-          -f app/Dockerfile app/
-
-    - name: Push Docker image
-      run: |
-        docker push $REGISTRY/$IMAGE_NAME:latest
-
-    - name: Set Kubernetes context (Minikube)
-      run: |
-        kubectl config use-context minikube
-
-    - name: Deploy to Minikube
+    - name: Apply Kubernetes manifests
       run: |
         kubectl apply -f k8s/
+
+    - name: Update deployment image
+      run: |
+        kubectl set image deployment/hybrid-app \
+          hybrid-app=$REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+    - name: Wait for rollout to complete
+      id: rollout
+      run: |
+        kubectl rollout status deployment/hybrid-app --timeout=120s
+
+    # -------------------------------
+    # Automatic rollback on failure
+    # -------------------------------
+    - name: Rollback deployment on failure
+      if: failure()
+      run: |
+        echo "Deployment failed. Rolling back..."
+        kubectl rollout undo deployment/hybrid-app
         kubectl rollout status deployment/hybrid-app
+
+    - name: Fail pipeline after rollback
+      if: failure()
+      run: |
+        echo "Rollback completed. Failing pipeline."
+        exit 1
